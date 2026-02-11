@@ -1,0 +1,20 @@
+import dotenv from "dotenv";
+import { z } from "zod";
+
+dotenv.config();
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  PORT: z.coerce.number().default(4000),
+  MONGODB_URI: z.string().default("mongodb://localhost:27017/sggold"),
+  REDIS_URL: z.string().default("redis://localhost:6379"),
+  FRONTEND_ORIGIN: z.string().default("http://localhost:3000"),
+  DATA_PROVIDER_MODE: z.enum(["mock", "alpha_vantage"]).default("alpha_vantage"),
+  ALPHA_VANTAGE_API_KEY: z.string().optional(),
+  API_KEY: z.string().optional(),
+  CACHE_TTL_SECONDS: z.coerce.number().default(30),
+  LIVE_CACHE_TTL_SECONDS: z.coerce.number().default(3600),
+  HISTORICAL_CACHE_TTL_SECONDS: z.coerce.number().default(86400)
+});
+
+export const env = envSchema.parse(process.env);
