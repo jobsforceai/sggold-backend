@@ -14,7 +14,11 @@ const envSchema = z.object({
   API_KEY: z.string().optional(),
   CACHE_TTL_SECONDS: z.coerce.number().default(30),
   LIVE_CACHE_TTL_SECONDS: z.coerce.number().default(3600),
-  HISTORICAL_CACHE_TTL_SECONDS: z.coerce.number().default(86400)
+  HISTORICAL_CACHE_TTL_SECONDS: z.coerce.number().default(86400),
+  JWT_SECRET: z.string().default("dev-secret-change-in-production"),
+  JWT_EXPIRES_IN: z.string().default("7d"),
+  ADMIN_API_KEY: z.string().optional(),
+  ADMIN_ORIGIN: z.string().default("http://localhost:3001")
 });
 
 export const env = envSchema.parse(process.env);
