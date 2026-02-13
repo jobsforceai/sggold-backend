@@ -1,3 +1,4 @@
+import { businessConfig } from "../config/business.js";
 import { env } from "../config/env.js";
 import { getCache, setCache } from "../lib/cache.js";
 import { getAlphaHistoricalSeries, getAlphaLiveQuote } from "../providers/alphaVantageProvider.js";
@@ -36,6 +37,26 @@ function cacheKey(...segments: string[]): string {
 }
 
 /**
+ * Indian gold/silver prices include import duty + AIDC + local premium
+ * on top of the international spot converted to INR.
+ * Only applied when currency is INR.
+ */
+function indianMarketMultiplier(): number {
+  const { importDutyPercent, aidcPercent, localPremiumPercent } = businessConfig.indianMarket;
+  return (1 + importDutyPercent / 100) * (1 + aidcPercent / 100) * (1 + localPremiumPercent / 100);
+}
+
+function applyIndianMarkup(quote: LiveQuote): LiveQuote {
+  if (quote.currency !== "INR") return quote;
+  const m = indianMarketMultiplier();
+  return {
+    ...quote,
+    price: Number((quote.price * m).toFixed(2)),
+    change: Number((quote.change * m).toFixed(2)),
+  };
+}
+
+/**
  * Provider chain: Gold-API → Alpha Vantage → Mock
  * In "auto" mode, tries each in order.
  * In specific modes, tries just that provider then falls back to mock.
@@ -46,7 +67,7 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
   // Gold-API (free, unlimited real-time)
   if (mode === "auto" || mode === "gold_api") {
     try {
-      return await getGoldApiLiveQuote(metal, currency);
+      return applyIndianMarkup(await getGoldApiLiveQuote(metal, currency));
     } catch (error) {
       console.warn("[provider] gold-api live failed:", (error as Error).message);
     }
@@ -56,7 +77,7 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
   if (mode === "auto") {
     try {
       const yq = await getYahooLiveQuote(metal, currency);
-      return {
+      return applyIndianMarkup({
         metal,
         currency,
         unit: "oz",
@@ -65,7 +86,7 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
         changePercent: yq.changePercent,
         timestamp: yq.timestamp,
         source: "yahoo_finance",
-      };
+      });
     } catch (error) {
       console.warn("[provider] yahoo live failed:", (error as Error).message);
     }
@@ -74,14 +95,26 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
   // Alpha Vantage (rate-limited free tier)
   if ((mode === "auto" || mode === "alpha_vantage") && env.ALPHA_VANTAGE_API_KEY) {
     try {
-      return await getAlphaLiveQuote(metal, currency);
+      return applyIndianMarkup(await getAlphaLiveQuote(metal, currency));
     } catch (error) {
       console.warn("[provider] alpha live failed:", (error as Error).message);
     }
   }
 
   // Mock fallback
-  return getLiveQuote(metal, currency);
+  return applyIndianMarkup(getLiveQuote(metal, currency));
+}
+
+function applyIndianMarkupToHistory(result: HistoricalResult, currency: Currency): HistoricalResult {
+  if (currency !== "INR") return result;
+  const m = indianMarketMultiplier();
+  return {
+    ...result,
+    data: result.data.map((pt) => ({
+      ...pt,
+      price: Number((pt.price * m).toFixed(2)),
+    })),
+  };
 }
 
 async function resolveHistoricalSeries(
@@ -92,7 +125,7 @@ async function resolveHistoricalSeries(
   // Yahoo Finance — free, no key, real market data (primary for historical)
   try {
     const data = await getYahooHistoricalSeries(metal, currency, points);
-    return { data, source: "yahoo_finance" };
+    return applyIndianMarkupToHistory({ data, source: "yahoo_finance" }, currency);
   } catch (error) {
     console.warn("[provider] yahoo history failed:", (error as Error).message);
   }
@@ -101,13 +134,16 @@ async function resolveHistoricalSeries(
   if (env.ALPHA_VANTAGE_API_KEY) {
     try {
       const data = await getAlphaHistoricalSeries(metal, currency, points);
-      return { data, source: "alpha_vantage" };
+      return applyIndianMarkupToHistory({ data, source: "alpha_vantage" }, currency);
     } catch (error) {
       console.warn("[provider] alpha history failed:", (error as Error).message);
     }
   }
 
-  return { data: getHistoricalSeries(metal, currency, points), source: "mock" };
+  return applyIndianMarkupToHistory(
+    { data: getHistoricalSeries(metal, currency, points), source: "mock" },
+    currency
+  );
 }
 
 export async function getLiveAssetQuote(metal: Metal, currency: Currency): Promise<LiveQuote> {
