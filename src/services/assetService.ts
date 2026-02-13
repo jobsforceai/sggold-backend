@@ -2,7 +2,7 @@ import { env } from "../config/env.js";
 import { getCache, setCache } from "../lib/cache.js";
 import { getAlphaHistoricalSeries, getAlphaLiveQuote } from "../providers/alphaVantageProvider.js";
 import { getGoldApiLiveQuote } from "../providers/goldApiProvider.js";
-import { getYahooHistoricalSeries } from "../providers/yahooFinanceProvider.js";
+import { getYahooLiveQuote, getYahooHistoricalSeries } from "../providers/yahooFinanceProvider.js";
 import { getHistoricalSeries, getLiveQuote } from "../providers/mockProvider.js";
 import { Currency, HistoricalPoint, LiveQuote, Metal, ProviderSource, RateTableRow } from "../types/asset.js";
 
@@ -49,6 +49,25 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
       return await getGoldApiLiveQuote(metal, currency);
     } catch (error) {
       console.warn("[provider] gold-api live failed:", (error as Error).message);
+    }
+  }
+
+  // Yahoo Finance live (free, no key, reliable)
+  if (mode === "auto") {
+    try {
+      const yq = await getYahooLiveQuote(metal, currency);
+      return {
+        metal,
+        currency,
+        unit: "oz",
+        price: yq.price,
+        change: yq.change,
+        changePercent: yq.changePercent,
+        timestamp: yq.timestamp,
+        source: "yahoo_finance",
+      };
+    } catch (error) {
+      console.warn("[provider] yahoo live failed:", (error as Error).message);
     }
   }
 

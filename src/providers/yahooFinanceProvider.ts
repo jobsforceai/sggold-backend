@@ -77,6 +77,58 @@ type YahooChart = {
   };
 };
 
+/* ─── Live Quote from Yahoo Finance ─── */
+
+export async function getYahooLiveQuote(metal: Metal, currency: Currency): Promise<{
+  price: number;
+  change: number;
+  changePercent: number;
+  timestamp: string;
+}> {
+  const ticker = metalToTicker(metal);
+  const url = `${CHART_BASE}/${encodeURIComponent(ticker)}?interval=1m&range=1d`;
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(8000),
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; SGGold/1.0)",
+      Accept: "application/json"
+    }
+  });
+
+  if (!res.ok) throw new Error(`Yahoo Finance live request failed (${res.status})`);
+
+  const data = (await res.json()) as YahooChart;
+  if (data.chart.error) throw new Error(`Yahoo Finance error: ${JSON.stringify(data.chart.error)}`);
+
+  const result = data.chart.result?.[0];
+  if (!result) throw new Error("No data from Yahoo Finance");
+
+  const meta = result as unknown as Record<string, unknown>;
+  const regularMarketPrice = meta.meta ? (meta.meta as Record<string, unknown>).regularMarketPrice as number : null;
+  const previousClose = meta.meta ? (meta.meta as Record<string, unknown>).previousClose as number : null;
+
+  // Fallback: use last close price from the data
+  const closes = result.indicators?.quote?.[0]?.close ?? [];
+  const lastPrice = regularMarketPrice ?? (closes.filter((c): c is number => c !== null).pop());
+
+  if (!lastPrice || !Number.isFinite(lastPrice)) throw new Error("Unable to parse Yahoo Finance live price");
+
+  const prevClose = previousClose ?? lastPrice;
+  const changeUsd = lastPrice - prevClose;
+  const changePct = prevClose > 0 ? (changeUsd / prevClose) * 100 : 0;
+
+  const fxRate = await getFxRate(currency);
+
+  return {
+    price: Number((lastPrice * fxRate).toFixed(2)),
+    change: Number((changeUsd * fxRate).toFixed(2)),
+    changePercent: Number(changePct.toFixed(4)),
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/* ─── Historical Series ─── */
+
 export async function getYahooHistoricalSeries(
   metal: Metal,
   currency: Currency,
