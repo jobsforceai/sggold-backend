@@ -37,12 +37,30 @@ async function getRedis(): Promise<RedisLike | null> {
       opts: Record<string, unknown>
     ) => RedisLike;
 
-    const client = new Ctor(process.env.REDIS_URL ?? "redis://localhost:6379", {
+    // Support both REDIS_URL (single string) and individual REDIS_HOST/PORT/etc params
+    const redisHost = process.env.REDIS_HOST ?? "localhost";
+    const redisPort = Number(process.env.REDIS_PORT) || 6379;
+    const redisUsername = process.env.REDIS_USERNAME || undefined;
+    const redisPassword = process.env.REDIS_PASSWORD || undefined;
+    const redisTls = process.env.REDIS_USETLS === "true";
+    const redisUrl = process.env.REDIS_URL;
+
+    const connectionOpts: Record<string, unknown> = {
       maxRetriesPerRequest: 2,
       retryStrategy: (times: number) => (times > 3 ? null : Math.min(times * 200, 2000)),
       enableOfflineQueue: true,
-      connectTimeout: 5000
-    });
+      connectTimeout: 5000,
+    };
+
+    if (!redisUrl) {
+      connectionOpts.host = redisHost;
+      connectionOpts.port = redisPort;
+      if (redisUsername) connectionOpts.username = redisUsername;
+      if (redisPassword) connectionOpts.password = redisPassword;
+      if (redisTls) connectionOpts.tls = {};
+    }
+
+    const client = new Ctor(redisUrl ?? `redis://${redisHost}:${redisPort}`, connectionOpts);
 
     client.on("ready", () => {
       redisReady = true;
