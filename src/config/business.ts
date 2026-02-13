@@ -106,7 +106,7 @@ export const businessConfig = {
   indianMarket: {
     importDutyPercent: 6,          // customs duty on gold imports
     aidcPercent: 1,                // Agriculture Infrastructure Development Cess
-    localPremiumPercent: 2,        // tunable to match dealer prices (e.g. dpgold)
+    localPremiumPercent: 1,        // tunable to match dealer prices (e.g. dpgold)
   },
 
   /* ── Sagnex Integration (future) ────────────────────── */
