@@ -98,6 +98,7 @@ export const businessConfig = {
       { id: "GUN01", name: "Guntur",         city: "Guntur",         state: "Andhra Pradesh" },
       { id: "NEL01", name: "Nellore",        city: "Nellore",        state: "Andhra Pradesh" },
       { id: "KAK01", name: "Kakinada",       city: "Kakinada",       state: "Andhra Pradesh" },
+      { id: "KhAM01", name: "Khammam",        city: "Khammam",        state: "Telangana" },
       { id: "WAR01", name: "Warangal",       city: "Warangal",       state: "Telangana" },
     ],
   },
