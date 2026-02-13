@@ -18,6 +18,9 @@ export interface IScheme extends Document {
   startDate: Date;
   installments: IInstallment[];
   missedCount: number;
+  sgxCode?: string;
+  sgxVerified?: boolean;
+  sgxReward?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -41,6 +44,9 @@ const schemeSchema = new Schema<IScheme>(
     startDate: { type: Date, required: true },
     installments: { type: [installmentSchema], default: [] },
     missedCount: { type: Number, default: 0 },
+    sgxCode: { type: String },
+    sgxVerified: { type: Boolean, default: false },
+    sgxReward: { type: String },
   },
   { timestamps: true }
 );

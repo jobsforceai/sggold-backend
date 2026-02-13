@@ -1,6 +1,8 @@
 import { env } from "../config/env.js";
 import { getCache, setCache } from "../lib/cache.js";
 import { getAlphaHistoricalSeries, getAlphaLiveQuote } from "../providers/alphaVantageProvider.js";
+import { getGoldApiLiveQuote } from "../providers/goldApiProvider.js";
+import { getYahooHistoricalSeries } from "../providers/yahooFinanceProvider.js";
 import { getHistoricalSeries, getLiveQuote } from "../providers/mockProvider.js";
 import { Currency, HistoricalPoint, LiveQuote, Metal, ProviderSource, RateTableRow } from "../types/asset.js";
 
@@ -33,21 +35,33 @@ function cacheKey(...segments: string[]): string {
   return `asset:${segments.join(":")}`;
 }
 
-function isAlphaMode(): boolean {
-  return env.DATA_PROVIDER_MODE === "alpha_vantage" && !!env.ALPHA_VANTAGE_API_KEY;
-}
-
+/**
+ * Provider chain: Gold-API → Alpha Vantage → Mock
+ * In "auto" mode, tries each in order.
+ * In specific modes, tries just that provider then falls back to mock.
+ */
 async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQuote> {
-  const shouldUseAlpha = isAlphaMode();
+  const mode = env.DATA_PROVIDER_MODE;
 
-  if (shouldUseAlpha) {
+  // Gold-API (free, unlimited real-time)
+  if (mode === "auto" || mode === "gold_api") {
     try {
-      return await getAlphaLiveQuote(metal, currency);
+      return await getGoldApiLiveQuote(metal, currency);
     } catch (error) {
-      console.warn("[provider] alpha live fallback to mock:", (error as Error).message);
+      console.warn("[provider] gold-api live failed:", (error as Error).message);
     }
   }
 
+  // Alpha Vantage (rate-limited free tier)
+  if ((mode === "auto" || mode === "alpha_vantage") && env.ALPHA_VANTAGE_API_KEY) {
+    try {
+      return await getAlphaLiveQuote(metal, currency);
+    } catch (error) {
+      console.warn("[provider] alpha live failed:", (error as Error).message);
+    }
+  }
+
+  // Mock fallback
   return getLiveQuote(metal, currency);
 }
 
@@ -56,14 +70,21 @@ async function resolveHistoricalSeries(
   currency: Currency,
   points: number
 ): Promise<HistoricalResult> {
-  const shouldUseAlpha = isAlphaMode();
+  // Yahoo Finance — free, no key, real market data (primary for historical)
+  try {
+    const data = await getYahooHistoricalSeries(metal, currency, points);
+    return { data, source: "yahoo_finance" };
+  } catch (error) {
+    console.warn("[provider] yahoo history failed:", (error as Error).message);
+  }
 
-  if (shouldUseAlpha) {
+  // Alpha Vantage historical (fallback)
+  if (env.ALPHA_VANTAGE_API_KEY) {
     try {
       const data = await getAlphaHistoricalSeries(metal, currency, points);
       return { data, source: "alpha_vantage" };
     } catch (error) {
-      console.warn("[provider] alpha history fallback to mock:", (error as Error).message);
+      console.warn("[provider] alpha history failed:", (error as Error).message);
     }
   }
 
@@ -72,9 +93,9 @@ async function resolveHistoricalSeries(
 
 export async function getLiveAssetQuote(metal: Metal, currency: Currency): Promise<LiveQuote> {
   const key = cacheKey("live", metal, currency);
-  const stickyAlphaKey = cacheKey("live-last-alpha", metal, currency);
+  const stickyKey = cacheKey("live-last-real", metal, currency);
   const cached = await getCache<LiveQuote>(key);
-  if (cached) return cached;
+  if (cached && cached.source !== "mock") return cached;
 
   const inFlightKey = `${metal}:${currency}`;
   const existing = liveInFlight.get(inFlightKey);
@@ -82,16 +103,21 @@ export async function getLiveAssetQuote(metal: Metal, currency: Currency): Promi
 
   const task = (async () => {
     const quote = await resolveLiveQuote(metal, currency);
-    if (quote.source === "alpha_vantage") {
-      await setCache(stickyAlphaKey, quote, 7 * 24 * 60 * 60);
+
+    // Cache real provider data as sticky fallback (7 days)
+    if (quote.source !== "mock") {
+      await setCache(stickyKey, quote, 7 * 24 * 60 * 60);
     }
-    if (quote.source === "mock" && isAlphaMode()) {
-      const stickyAlpha = await getCache<LiveQuote>(stickyAlphaKey);
-      if (stickyAlpha) {
-        await setCache(key, stickyAlpha, Math.max(env.LIVE_CACHE_TTL_SECONDS, env.CACHE_TTL_SECONDS));
-        return stickyAlpha;
+
+    // If we got mock but have sticky real data, prefer that
+    if (quote.source === "mock" && env.DATA_PROVIDER_MODE !== "mock") {
+      const sticky = await getCache<LiveQuote>(stickyKey);
+      if (sticky) {
+        await setCache(key, sticky, Math.max(env.LIVE_CACHE_TTL_SECONDS, env.CACHE_TTL_SECONDS));
+        return sticky;
       }
     }
+
     await setCache(key, quote, Math.max(env.LIVE_CACHE_TTL_SECONDS, env.CACHE_TTL_SECONDS));
     return quote;
   })();
@@ -110,9 +136,10 @@ export async function getHistoricalAssetQuote(
   points: number
 ): Promise<HistoricalResult> {
   const key = cacheKey("history", metal, currency, String(points));
-  const stickyAlphaKey = cacheKey("history-last-alpha", metal, currency, String(points));
+  const stickyKey = cacheKey("history-last-real", metal, currency, String(points));
   const cached = await getCache<HistoricalResult>(key);
-  if (cached) return cached;
+  // Serve cache only if it's real data — skip stale mock entries
+  if (cached && cached.source !== "mock") return cached;
 
   const inFlightKey = `${metal}:${currency}:${points}`;
   const existing = historicalInFlight.get(inFlightKey);
@@ -120,20 +147,19 @@ export async function getHistoricalAssetQuote(
 
   const task = (async () => {
     const history = await resolveHistoricalSeries(metal, currency, points);
-    if (history.source === "alpha_vantage") {
-      await setCache(stickyAlphaKey, history, 30 * 24 * 60 * 60);
+
+    if (history.source !== "mock") {
+      await setCache(stickyKey, history, 30 * 24 * 60 * 60);
     }
-    if (history.source === "mock" && isAlphaMode()) {
-      const stickyAlpha = await getCache<HistoricalResult>(stickyAlphaKey);
-      if (stickyAlpha) {
-        await setCache(
-          key,
-          stickyAlpha,
-          Math.max(env.HISTORICAL_CACHE_TTL_SECONDS, env.CACHE_TTL_SECONDS)
-        );
-        return stickyAlpha;
+
+    if (history.source === "mock" && env.DATA_PROVIDER_MODE !== "mock") {
+      const sticky = await getCache<HistoricalResult>(stickyKey);
+      if (sticky) {
+        await setCache(key, sticky, Math.max(env.HISTORICAL_CACHE_TTL_SECONDS, env.CACHE_TTL_SECONDS));
+        return sticky;
       }
     }
+
     await setCache(key, history, Math.max(env.HISTORICAL_CACHE_TTL_SECONDS, env.CACHE_TTL_SECONDS));
     return history;
   })();
@@ -191,10 +217,12 @@ export async function getOverview(currency: Currency) {
     getLiveAssetQuote("silver", currency)
   ]);
 
+  const source = gold.source === "mock" && silver.source === "mock" ? "mock" : gold.source;
+
   return {
     currency,
     updatedAt: new Date().toISOString(),
-    source: gold.source === "alpha_vantage" && silver.source === "alpha_vantage" ? "alpha_vantage" : "mock",
+    source,
     assets: { gold, silver }
   };
 }

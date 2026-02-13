@@ -4,6 +4,7 @@ import { Wallet } from "../models/Wallet.js";
 import { Transaction } from "../models/Transaction.js";
 import { Scheme } from "../models/Scheme.js";
 import { DeliveryRequest } from "../models/DeliveryRequest.js";
+import { approveOrder, rejectOrder, getPendingOrders } from "../services/tradeService.js";
 
 export async function listUsersHandler(req: Request, res: Response) {
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -110,6 +111,36 @@ export async function updateDeliveryStatusHandler(req: Request, res: Response) {
 
   if (!delivery) return res.status(404).json({ message: "Delivery not found" });
   return res.json({ delivery });
+}
+
+export async function listPendingOrdersHandler(req: Request, res: Response) {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  try {
+    const result = await getPendingOrders(page);
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to fetch orders" });
+  }
+}
+
+export async function approveOrderHandler(req: Request, res: Response) {
+  try {
+    const result = await approveOrder(req.params.orderId as string);
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Approval failed";
+    return res.status(400).json({ message });
+  }
+}
+
+export async function rejectOrderHandler(req: Request, res: Response) {
+  try {
+    const result = await rejectOrder(req.params.orderId as string);
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Rejection failed";
+    return res.status(400).json({ message });
+  }
 }
 
 export async function dashboardStatsHandler(_req: Request, res: Response) {

@@ -1,6 +1,6 @@
 export type Metal = "gold" | "silver";
 export type Currency = "USD" | "INR" | "EUR" | "GBP" | "AED";
-export type ProviderSource = "alpha_vantage" | "mock";
+export type ProviderSource = "gold_api" | "yahoo_finance" | "alpha_vantage" | "mock";
 
 export type LiveQuote = {
   metal: Metal;

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { getWallet, getTransactions } from "../services/walletService.js";
+import { getWallet, getTransactions, claimStorageBenefit, getStorageBenefitStatus } from "../services/walletService.js";
 
 export async function getWalletHandler(req: Request, res: Response) {
   if (!req.user) return res.status(401).json({ message: "Not authenticated" });
@@ -29,5 +29,28 @@ export async function getTransactionsHandler(req: Request, res: Response) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to get transactions";
     return res.status(500).json({ message });
+  }
+}
+
+export async function storageBenefitStatusHandler(req: Request, res: Response) {
+  if (!req.user) return res.status(401).json({ message: "Not authenticated" });
+
+  try {
+    const status = await getStorageBenefitStatus(req.user.userId);
+    return res.json(status);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to check status" });
+  }
+}
+
+export async function claimStorageBenefitHandler(req: Request, res: Response) {
+  if (!req.user) return res.status(401).json({ message: "Not authenticated" });
+
+  try {
+    const result = await claimStorageBenefit(req.user.userId);
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Claim failed";
+    return res.status(400).json({ message });
   }
 }

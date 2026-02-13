@@ -25,20 +25,25 @@ export const businessConfig = {
     subscriptionSlabsPaise: [
       25_000_00,    // ₹25,000
       50_000_00,    // ₹50,000
-      1_00_000_00,  // ₹1,00,000
       2_00_000_00,  // ₹2,00,000
       5_00_000_00,  // ₹5,00,000
     ],
     /** max daily buy (mg) keyed by subscription slab (paise) */
     dailyLimitMg: {
-      25_000_00:    100_000,   // 25k  → 100 g
-      50_000_00:    250_000,   // 50k  → 250 g
-      1_00_000_00:  500_000,   // 1L   → 500 g
-      2_00_000_00:  750_000,   // 2L   → 750 g
-      5_00_000_00:  1_000_000, // 5L   → 1 kg
+      25_000_00:    100_000,     // 25k  → 100 g
+      50_000_00:    250_000,     // 50k  → 250 g
+      2_00_000_00:  500_000,     // 2L   → 500 g
+      5_00_000_00:  1_000_000,   // 5L   → 1 kg
+    } as Record<number, number>,
+    /** platform fee % keyed by subscription slab (paise) — on top of 3% GST */
+    platformFeePercent: {
+      25_000_00:    1.0,
+      50_000_00:    1.2,
+      2_00_000_00:  1.5,
+      5_00_000_00:  0,     // custom tier
     } as Record<number, number>,
     settlementDays: 3,
-    taxPercent: 1.5,
+    gstPercent: 3,
   },
 
   /* ── First-1g Bonus Promotion ───────────────────────── */
@@ -53,13 +58,11 @@ export const businessConfig = {
     durationMonths: 11,
     cycleDays: 30,
     slabs: [
-      { monthlyPaise: 5_000_00,      bonusPaise: 10_000_00 },
-      { monthlyPaise: 10_000_00,     bonusPaise: 20_000_00 },
-      { monthlyPaise: 20_000_00,     bonusPaise: 40_000_00 },
-      { monthlyPaise: 40_000_00,     bonusPaise: 80_000_00 },
-      { monthlyPaise: 60_000_00,     bonusPaise: 1_20_000_00 },
-      { monthlyPaise: 80_000_00,     bonusPaise: 1_60_000_00 },
-      { monthlyPaise: 1_00_000_00,   bonusPaise: 2_40_000_00 },
+      { monthlyPaise: 5_000_00,      bonusPaise: 10_000_00 },     // 2x
+      { monthlyPaise: 10_000_00,     bonusPaise: 20_000_00 },     // 2x
+      { monthlyPaise: 25_000_00,     bonusPaise: 50_000_00 },     // 2x
+      { monthlyPaise: 50_000_00,     bonusPaise: 1_00_000_00 },   // 2x
+      { monthlyPaise: 1_00_000_00,   bonusPaise: 2_00_000_00 },   // 2x
     ],
     /** consecutive missed months before penalty kicks in */
     missedThreshold: 2,
@@ -85,17 +88,17 @@ export const businessConfig = {
     gstPercent: 3,
 
     stores: [
-      { id: "VIS01", name: "Visakhapatnam",  city: "Visakhapatnam",  state: "Andhra Pradesh" },
+      { id: "VIZ01", name: "Vizag",          city: "Visakhapatnam",  state: "Andhra Pradesh" },
       { id: "VIJ01", name: "Vijayawada",     city: "Vijayawada",     state: "Andhra Pradesh" },
       { id: "HYD01", name: "Hyderabad",      city: "Hyderabad",      state: "Telangana" },
       { id: "RAJ01", name: "Rajahmundry",    city: "Rajahmundry",    state: "Andhra Pradesh" },
       { id: "BHI01", name: "Bhimavaram",     city: "Bhimavaram",     state: "Andhra Pradesh" },
-      { id: "NAR01", name: "Narsapur",       city: "Narsapur",       state: "Andhra Pradesh" },
-      { id: "KAK01", name: "Kakinada",       city: "Kakinada",       state: "Andhra Pradesh" },
-      { id: "BHM01", name: "Bhimeshwar",     city: "Bhimeshwar",     state: "Andhra Pradesh" },
       { id: "ANA01", name: "Anakapalli",     city: "Anakapalli",     state: "Andhra Pradesh" },
       { id: "TIR01", name: "Tirupati",       city: "Tirupati",       state: "Andhra Pradesh" },
-      { id: "BAP01", name: "Bapatla",        city: "Bapatla",        state: "Andhra Pradesh" },
+      { id: "GUN01", name: "Guntur",         city: "Guntur",         state: "Andhra Pradesh" },
+      { id: "NEL01", name: "Nellore",        city: "Nellore",        state: "Andhra Pradesh" },
+      { id: "KAK01", name: "Kakinada",       city: "Kakinada",       state: "Andhra Pradesh" },
+      { id: "WAR01", name: "Warangal",       city: "Warangal",       state: "Telangana" },
     ],
   },
 

@@ -29,6 +29,8 @@ function toUserResponse(user: IUser) {
     name: user.name,
     email: user.email,
     accountType: user.accountType,
+    jewellerStatus: user.jewellerStatus,
+    jewellerSubscriptionSlabPaise: user.jewellerSubscriptionSlabPaise,
   };
 }
 
@@ -87,5 +89,45 @@ export async function loginUser(phone: string, password: string): Promise<AuthRe
 export async function getUserById(userId: string) {
   const user = await User.findById(userId);
   if (!user) return null;
+  return toUserResponse(user);
+}
+
+export async function updateUserProfile(userId: string, data: { name?: string; email?: string }) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error("User not found");
+
+  if (data.name) user.name = data.name;
+  if (data.email !== undefined) user.email = data.email;
+  await user.save();
+
+  return toUserResponse(user);
+}
+
+export async function changeUserPassword(userId: string, currentPassword: string, newPassword: string) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error("User not found");
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) throw new Error("Current password is incorrect");
+
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  await user.save();
+}
+
+export async function requestJewellerAccount(userId: string) {
+  const user = await User.findById(userId);
+  if (!user) throw new Error("User not found");
+
+  if (user.accountType === "jeweller" && user.jewellerStatus === "approved") {
+    throw new Error("Already an approved jeweller");
+  }
+
+  if (user.jewellerStatus === "pending") {
+    throw new Error("Jeweller request already pending");
+  }
+
+  user.jewellerStatus = "pending";
+  await user.save();
+
   return toUserResponse(user);
 }

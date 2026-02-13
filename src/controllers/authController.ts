@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { env } from "../config/env.js";
-import { getUserById, loginUser, registerUser } from "../services/authService.js";
-import { loginSchema, registerSchema } from "../utils/authValidators.js";
+import { changeUserPassword, getUserById, loginUser, registerUser, requestJewellerAccount, updateUserProfile } from "../services/authService.js";
+import { changePasswordSchema, loginSchema, registerSchema, updateProfileSchema } from "../utils/authValidators.js";
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
@@ -52,4 +52,49 @@ export async function meHandler(req: Request, res: Response) {
   }
 
   return res.json({ user });
+}
+
+export async function updateProfileHandler(req: Request, res: Response) {
+  if (!req.user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  try {
+    const data = updateProfileSchema.parse(req.body);
+    const user = await updateUserProfile(req.user.userId, data);
+    return res.json({ user });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Update failed";
+    return res.status(400).json({ message });
+  }
+}
+
+export async function changePasswordHandler(req: Request, res: Response) {
+  if (!req.user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  try {
+    const data = changePasswordSchema.parse(req.body);
+    await changeUserPassword(req.user.userId, data.currentPassword, data.newPassword);
+    return res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Password change failed";
+    const status = message.includes("incorrect") ? 403 : 400;
+    return res.status(status).json({ message });
+  }
+}
+
+export async function requestJewellerHandler(req: Request, res: Response) {
+  if (!req.user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  try {
+    const user = await requestJewellerAccount(req.user.userId);
+    return res.json({ user });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Request failed";
+    return res.status(400).json({ message });
+  }
 }

@@ -11,7 +11,11 @@ function findSlab(slabAmountPaise: number) {
   return cfg.slabs.find((s) => s.monthlyPaise === slabAmountPaise);
 }
 
-export async function enrollScheme(userId: string, slabAmountPaise: number): Promise<IScheme> {
+export async function enrollScheme(
+  userId: string,
+  slabAmountPaise: number,
+  sgxCode?: string
+): Promise<IScheme> {
   const slab = findSlab(slabAmountPaise);
   if (!slab) {
     throw new Error("Invalid scheme slab amount");
@@ -38,6 +42,7 @@ export async function enrollScheme(userId: string, slabAmountPaise: number): Pro
     startDate: now,
     installments,
     missedCount: 0,
+    ...(sgxCode ? { sgxCode, sgxVerified: true, sgxReward: "250mg_gold_coin" } : {}),
   });
 
   await Transaction.create({
@@ -118,9 +123,29 @@ export async function redeemScheme(userId: string, schemeId: string) {
     },
   });
 
+  // SGX Loyalty Reward: extra 250mg gold coin if verified
+  const sgxBonusMg = scheme.sgxVerified ? 250 : 0;
+
+  if (sgxBonusMg > 0) {
+    await Transaction.create({
+      userId,
+      type: "bonus",
+      amountMg: sgxBonusMg,
+      pricePerGramPaise,
+      totalPaise: 0,
+      status: "completed",
+      metadata: {
+        schemeId: scheme._id,
+        action: "sgx_loyalty_reward",
+        sgxCode: scheme.sgxCode,
+        reward: scheme.sgxReward,
+      },
+    });
+  }
+
   await Wallet.updateOne(
     { userId },
-    { $inc: { balanceMg: totalGoldMg } }
+    { $inc: { balanceMg: totalGoldMg + sgxBonusMg } }
   );
 
   return {
@@ -128,6 +153,7 @@ export async function redeemScheme(userId: string, schemeId: string) {
     bonusPaise: scheme.bonusAmountPaise,
     totalValuePaise: totalWithBonusPaise,
     goldCreditedMg: totalGoldMg,
+    sgxBonusMg,
     pricePerGramPaise,
   };
 }

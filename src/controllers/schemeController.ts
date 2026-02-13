@@ -7,7 +7,8 @@ export async function enrollHandler(req: Request, res: Response) {
 
   try {
     const { slabAmountPaise } = enrollSchemeSchema.parse(req.body);
-    const scheme = await enrollScheme(req.user.userId, slabAmountPaise);
+    const sgxCode = typeof req.body.sgxCode === "string" ? req.body.sgxCode.trim() : undefined;
+    const scheme = await enrollScheme(req.user.userId, slabAmountPaise, sgxCode || undefined);
     return res.status(201).json({ scheme });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Enrollment failed";
