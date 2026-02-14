@@ -17,6 +17,7 @@ const memoryStore = new Map<string, MemoryEntry>();
 type RedisLike = {
   get: (key: string) => Promise<string | null>;
   set: (key: string, value: string, mode: string, ttl: number) => Promise<unknown>;
+  flushall: () => Promise<unknown>;
   on: (event: string, listener: (...args: unknown[]) => void) => unknown;
   status?: string;
 };
@@ -139,6 +140,23 @@ export async function setCache<T>(key: string, value: T, ttlSeconds: number): Pr
       await client.set(key, payload, "EX", ttlSeconds);
     } catch {
       // Redis write failed, in-memory still has it
+    }
+  }
+}
+
+/* ─── Flush everything ─── */
+
+export async function clearAllCache(): Promise<void> {
+  // Clear in-memory
+  memoryStore.clear();
+
+  // Flush Redis
+  const client = await getRedis();
+  if (client) {
+    try {
+      await client.flushall();
+    } catch {
+      // Redis flush failed, in-memory already cleared
     }
   }
 }

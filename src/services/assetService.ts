@@ -1,10 +1,10 @@
-import { businessConfig } from "../config/business.js";
 import { env } from "../config/env.js";
 import { getCache, setCache } from "../lib/cache.js";
 import { getAlphaHistoricalSeries, getAlphaLiveQuote } from "../providers/alphaVantageProvider.js";
 import { getGoldApiLiveQuote } from "../providers/goldApiProvider.js";
 import { getYahooLiveQuote, getYahooHistoricalSeries } from "../providers/yahooFinanceProvider.js";
 import { getHistoricalSeries, getLiveQuote } from "../providers/mockProvider.js";
+import { getPriceConfig } from "./priceConfigService.js";
 import { Currency, HistoricalPoint, LiveQuote, Metal, ProviderSource, RateTableRow } from "../types/asset.js";
 
 const gramsPerOunce = 31.1035;
@@ -39,16 +39,16 @@ function cacheKey(...segments: string[]): string {
 /**
  * Indian gold/silver prices include import duty + AIDC + local premium
  * on top of the international spot converted to INR.
- * Only applied when currency is INR.
+ * Reads from DB-backed PriceConfig (admin-editable).
  */
-function indianMarketMultiplier(): number {
-  const { importDutyPercent, aidcPercent, localPremiumPercent } = businessConfig.indianMarket;
-  return (1 + importDutyPercent / 100) * (1 + aidcPercent / 100) * (1 + localPremiumPercent / 100);
+async function indianMarketMultiplier(): Promise<number> {
+  const cfg = await getPriceConfig();
+  return (1 + cfg.importDutyPercent / 100) * (1 + cfg.aidcPercent / 100) * (1 + cfg.localPremiumPercent / 100);
 }
 
-function applyIndianMarkup(quote: LiveQuote): LiveQuote {
+async function applyIndianMarkup(quote: LiveQuote): Promise<LiveQuote> {
   if (quote.currency !== "INR") return quote;
-  const m = indianMarketMultiplier();
+  const m = await indianMarketMultiplier();
   return {
     ...quote,
     price: Number((quote.price * m).toFixed(2)),
@@ -57,17 +57,46 @@ function applyIndianMarkup(quote: LiveQuote): LiveQuote {
 }
 
 /**
- * Provider chain: Gold-API → Alpha Vantage → Mock
- * In "auto" mode, tries each in order.
- * In specific modes, tries just that provider then falls back to mock.
+ * If admin has set a manual price, build a LiveQuote from it.
+ * Manual price is per-gram in paise — convert to per-oz in INR for consistency.
+ */
+async function resolveAdminOverride(metal: Metal, currency: Currency): Promise<LiveQuote | null> {
+  if (currency !== "INR") return null;
+  const cfg = await getPriceConfig();
+  const paise = metal === "gold" ? cfg.goldPricePerGramPaise : cfg.silverPricePerGramPaise;
+  if (paise == null) return null;
+
+  const pricePerGramINR = paise / 100;
+  const pricePerOz = pricePerGramINR * gramsPerOunce;
+
+  return {
+    metal,
+    currency,
+    unit: "oz",
+    price: Number(pricePerOz.toFixed(2)),
+    change: 0,
+    changePercent: 0,
+    timestamp: new Date().toISOString(),
+    source: "admin",
+  };
+}
+
+/**
+ * Provider chain: Admin Override → Gold-API → Yahoo → Alpha Vantage → Mock
+ * Admin override bypasses the entire provider chain.
+ * In "auto" mode, tries each provider in order.
  */
 async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQuote> {
+  // Admin manual price override (highest priority)
+  const adminQuote = await resolveAdminOverride(metal, currency);
+  if (adminQuote) return adminQuote;
+
   const mode = env.DATA_PROVIDER_MODE;
 
   // Gold-API (free, unlimited real-time)
   if (mode === "auto" || mode === "gold_api") {
     try {
-      return applyIndianMarkup(await getGoldApiLiveQuote(metal, currency));
+      return await applyIndianMarkup(await getGoldApiLiveQuote(metal, currency));
     } catch (error) {
       console.warn("[provider] gold-api live failed:", (error as Error).message);
     }
@@ -77,7 +106,7 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
   if (mode === "auto") {
     try {
       const yq = await getYahooLiveQuote(metal, currency);
-      return applyIndianMarkup({
+      return await applyIndianMarkup({
         metal,
         currency,
         unit: "oz",
@@ -95,19 +124,19 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
   // Alpha Vantage (rate-limited free tier)
   if ((mode === "auto" || mode === "alpha_vantage") && env.ALPHA_VANTAGE_API_KEY) {
     try {
-      return applyIndianMarkup(await getAlphaLiveQuote(metal, currency));
+      return await applyIndianMarkup(await getAlphaLiveQuote(metal, currency));
     } catch (error) {
       console.warn("[provider] alpha live failed:", (error as Error).message);
     }
   }
 
   // Mock fallback
-  return applyIndianMarkup(getLiveQuote(metal, currency));
+  return await applyIndianMarkup(getLiveQuote(metal, currency));
 }
 
-function applyIndianMarkupToHistory(result: HistoricalResult, currency: Currency): HistoricalResult {
+async function applyIndianMarkupToHistory(result: HistoricalResult, currency: Currency): Promise<HistoricalResult> {
   if (currency !== "INR") return result;
-  const m = indianMarketMultiplier();
+  const m = await indianMarketMultiplier();
   return {
     ...result,
     data: result.data.map((pt) => ({
@@ -125,7 +154,7 @@ async function resolveHistoricalSeries(
   // Yahoo Finance — free, no key, real market data (primary for historical)
   try {
     const data = await getYahooHistoricalSeries(metal, currency, points);
-    return applyIndianMarkupToHistory({ data, source: "yahoo_finance" }, currency);
+    return await applyIndianMarkupToHistory({ data, source: "yahoo_finance" }, currency);
   } catch (error) {
     console.warn("[provider] yahoo history failed:", (error as Error).message);
   }
@@ -134,13 +163,13 @@ async function resolveHistoricalSeries(
   if (env.ALPHA_VANTAGE_API_KEY) {
     try {
       const data = await getAlphaHistoricalSeries(metal, currency, points);
-      return applyIndianMarkupToHistory({ data, source: "alpha_vantage" }, currency);
+      return await applyIndianMarkupToHistory({ data, source: "alpha_vantage" }, currency);
     } catch (error) {
       console.warn("[provider] alpha history failed:", (error as Error).message);
     }
   }
 
-  return applyIndianMarkupToHistory(
+  return await applyIndianMarkupToHistory(
     { data: getHistoricalSeries(metal, currency, points), source: "mock" },
     currency
   );

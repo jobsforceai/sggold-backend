@@ -1,7 +1,9 @@
 import { Router } from "express";
 import {
   approveOrderHandler,
+  clearCacheHandler,
   dashboardStatsHandler,
+  getPriceConfigHandler,
   getUserDetailHandler,
   listAllDeliveriesHandler,
   listAllSchemesHandler,
@@ -11,11 +13,15 @@ import {
   rejectOrderHandler,
   updateDeliveryStatusHandler,
   updateJewellerStatusHandler,
+  updatePriceConfigHandler,
 } from "../controllers/adminController.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 
 const router = Router();
 
+router.get("/price-config", requireAdmin, getPriceConfigHandler);
+router.put("/price-config", requireAdmin, updatePriceConfigHandler);
+router.post("/clear-cache", requireAdmin, clearCacheHandler);
 router.get("/stats", requireAdmin, dashboardStatsHandler);
 router.get("/users", requireAdmin, listUsersHandler);
 router.get("/users/:userId", requireAdmin, getUserDetailHandler);

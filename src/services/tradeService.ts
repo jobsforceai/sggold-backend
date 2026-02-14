@@ -2,6 +2,7 @@ import { businessConfig } from "../config/business.js";
 import { Transaction } from "../models/Transaction.js";
 import { Wallet } from "../models/Wallet.js";
 import { getLiveAssetQuote } from "./assetService.js";
+import { getPriceConfig } from "./priceConfigService.js";
 import { getWallet, getDailyPurchasedMg } from "./walletService.js";
 
 const gramsPerOunce = 31.1035;
@@ -43,9 +44,15 @@ export async function placeBuyOrder(userId: string, amountMg: number) {
     throw new Error(`Daily limit exceeded. Already bought ${dailyPurchased / 1000}g today.`);
   }
 
-  const pricePerGramPaise = await getCurrentGoldPricePerGramPaise();
+  const priceCfg = await getPriceConfig();
+  const basePricePerGramPaise = await getCurrentGoldPricePerGramPaise();
+
+  // Apply buy premium from admin config
+  const buyMultiplier = 1 + priceCfg.buyPremiumPercent / 100;
+  const pricePerGramPaise = Math.round(basePricePerGramPaise * buyMultiplier);
+
   const totalPaise = Math.round((amountMg / 1000) * pricePerGramPaise);
-  const gstPaise = Math.round(totalPaise * (cfg.gstPercent / 100));
+  const gstPaise = Math.round(totalPaise * (priceCfg.gstPercent / 100));
 
   const wallet = await getWallet(userId);
   const bonusMg = calculateBonus(wallet.totalPurchasedMg, wallet.totalBonusMg, amountMg);
@@ -58,7 +65,7 @@ export async function placeBuyOrder(userId: string, amountMg: number) {
     totalPaise: totalPaise + gstPaise,
     bonusMg,
     status: "pending",
-    metadata: { gstPaise, basePaise: totalPaise },
+    metadata: { gstPaise, basePaise: totalPaise, buyPremiumPercent: priceCfg.buyPremiumPercent },
   });
 
   return {
@@ -85,7 +92,13 @@ export async function placeSellOrder(userId: string, amountMg: number) {
     throw new Error(`Insufficient balance. You have ${wallet.balanceMg / 1000}g.`);
   }
 
-  const pricePerGramPaise = await getCurrentGoldPricePerGramPaise();
+  const priceCfg = await getPriceConfig();
+  const basePricePerGramPaise = await getCurrentGoldPricePerGramPaise();
+
+  // Apply sell discount from admin config
+  const sellMultiplier = 1 - priceCfg.sellDiscountPercent / 100;
+  const pricePerGramPaise = Math.round(basePricePerGramPaise * sellMultiplier);
+
   const totalPaise = Math.round((amountMg / 1000) * pricePerGramPaise);
 
   const order = await Transaction.create({
@@ -95,6 +108,7 @@ export async function placeSellOrder(userId: string, amountMg: number) {
     pricePerGramPaise,
     totalPaise,
     status: "pending",
+    metadata: { sellDiscountPercent: priceCfg.sellDiscountPercent },
   });
 
   return {

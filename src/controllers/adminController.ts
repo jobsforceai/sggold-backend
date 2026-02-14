@@ -4,6 +4,8 @@ import { Wallet } from "../models/Wallet.js";
 import { Transaction } from "../models/Transaction.js";
 import { Scheme } from "../models/Scheme.js";
 import { DeliveryRequest } from "../models/DeliveryRequest.js";
+import { clearAllCache } from "../lib/cache.js";
+import { getPriceConfig, updatePriceConfig } from "../services/priceConfigService.js";
 import { approveOrder, rejectOrder, getPendingOrders } from "../services/tradeService.js";
 
 export async function listUsersHandler(req: Request, res: Response) {
@@ -140,6 +142,35 @@ export async function rejectOrderHandler(req: Request, res: Response) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Rejection failed";
     return res.status(400).json({ message });
+  }
+}
+
+export async function getPriceConfigHandler(_req: Request, res: Response) {
+  try {
+    const config = await getPriceConfig();
+    return res.json(config);
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load price config" });
+  }
+}
+
+export async function updatePriceConfigHandler(req: Request, res: Response) {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const config = await updatePriceConfig(body);
+    return res.json(config);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Update failed";
+    return res.status(400).json({ message });
+  }
+}
+
+export async function clearCacheHandler(_req: Request, res: Response) {
+  try {
+    await clearAllCache();
+    return res.json({ message: "Cache cleared successfully" });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to clear cache" });
   }
 }
 
