@@ -36,14 +36,26 @@ export async function historicalHandler(req: Request, res: Response) {
   const query = historicalQuerySchema.parse(req.query);
   const range = query.range ?? "1D";
   const points = query.points ?? rangeToPoints[range];
-  const data = await getHistoricalAssetQuote(metal, query.currency ?? "INR", points);
+  const currency = query.currency ?? "INR";
+
+  const [data, live] = await Promise.all([
+    getHistoricalAssetQuote(metal, currency, points),
+    getLiveAssetQuote(metal, currency),
+  ]);
+
+  // Append current live price so the chart always ends at the displayed price
+  const chartData = [
+    ...data.data,
+    { time: new Date().toISOString(), price: live.price },
+  ];
+
   res.json({
     metal,
-    currency: query.currency ?? "INR",
+    currency,
     range,
-    points: data.data.length,
+    points: chartData.length,
     source: data.source,
-    data: data.data
+    data: chartData,
   });
 }
 
