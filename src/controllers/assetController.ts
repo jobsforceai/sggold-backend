@@ -6,6 +6,7 @@ import {
   getOverview,
   getSilverRateTable
 } from "../services/assetService.js";
+import { getSvbcLocalPrices } from "../providers/svbcProvider.js";
 import { currencySchema, historicalQuerySchema, metalSchema } from "../utils/validators.js";
 
 const rangeToPoints: Record<"1D" | "1W" | "1M" | "5M" | "1Y" | "5Y" | "10Y", number> = {
@@ -69,4 +70,9 @@ export async function silverRateTableHandler(req: Request, res: Response) {
   const currency = currencySchema.parse(req.query.currency);
   const table = await getSilverRateTable(currency);
   res.json({ currency, ...table });
+}
+
+export async function localPricesHandler(_req: Request, res: Response) {
+  const prices = await getSvbcLocalPrices();
+  res.json({ source: "svbc", prices });
 }

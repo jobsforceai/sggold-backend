@@ -44,6 +44,13 @@ type SvbcResponse = {
   };
 };
 
+export type LocalCityPrice = {
+  city: string;
+  pricePerGram: number;
+  bid: number | null;
+  ask: number | null;
+};
+
 /* ─── FX rate fallback (same pattern as goldApiProvider) ─── */
 
 const fallbackFx: Record<Currency, number> = {
@@ -169,10 +176,32 @@ async function pollSvbc(): Promise<void> {
     await setCache(prevKey, { price: priceUsd }, PREV_PRICE_TTL);
   }
 
+  // Parse and cache local city prices (INR per gram)
+  const localPrices: LocalCityPrice[] = [];
+  for (const entry of body.data.localPrices) {
+    const price = parseFloat(entry.price);
+    if (!Number.isFinite(price) || price <= 0) continue; // skip "-" entries
+
+    // Extract city name from "VIJAYAWADA GOLD 1g (999) (BIS Or IMP)"
+    const city = entry.name.split(/\s+GOLD/i)[0].trim();
+    if (!city) continue;
+
+    localPrices.push({
+      city: city.charAt(0).toUpperCase() + city.slice(1).toLowerCase(),
+      pricePerGram: price,
+      bid: entry.bid && entry.bid !== "-" ? parseFloat(entry.bid) : null,
+      ask: entry.ask && entry.ask !== "-" ? parseFloat(entry.ask) : null,
+    });
+  }
+
+  if (localPrices.length > 0) {
+    await setCache("svbc:poll:localPrices", localPrices, POLL_CACHE_TTL);
+  }
+
   const goldStr = goldUsd?.toFixed(2) ?? "N/A";
   const silverStr = silverUsd?.toFixed(2) ?? "N/A";
   const fxStr = inrRate?.toFixed(3) ?? "N/A";
-  console.log(`[svbc-poller] updated gold=$${goldStr} silver=$${silverStr} fx=${fxStr}`);
+  console.log(`[svbc-poller] updated gold=$${goldStr} silver=$${silverStr} fx=${fxStr} cities=${localPrices.length}`);
 }
 
 export function startSvbcPoller(): void {
@@ -191,12 +220,38 @@ export function startSvbcPoller(): void {
   }, POLL_INTERVAL_MS);
 }
 
+/* ─── Local City Prices Reader ─── */
+
+export async function getSvbcLocalPrices(): Promise<LocalCityPrice[]> {
+  const cached = await getCache<LocalCityPrice[]>("svbc:poll:localPrices");
+  return cached ?? [];
+}
+
 /* ─── Provider Reader (called by assetService) ─── */
+
+const GRAMS_PER_OZ = 31.1035;
 
 export async function getSvbcLiveQuote(metal: Metal, currency: Currency): Promise<LiveQuote> {
   const cached = await getCache<LiveQuote>(`svbc:poll:${metal}:USD`);
   if (!cached) {
     throw new Error("SVBC poll cache empty — no data available");
+  }
+
+  // For gold in INR, use SVBC local city prices directly (exact market price,
+  // already includes import duty / AIDC / local premium — no markup needed)
+  if (metal === "gold" && currency === "INR") {
+    const localPrices = await getCache<LocalCityPrice[]>("svbc:poll:localPrices");
+    const localGold = localPrices?.find((p) => p.pricePerGram > 0);
+    if (localGold) {
+      const pricePerOz = localGold.pricePerGram * GRAMS_PER_OZ;
+      const fxRate = await getFxRate("INR");
+      return {
+        ...cached,
+        currency: "INR",
+        price: Number(pricePerOz.toFixed(2)),
+        change: Number((cached.change * fxRate).toFixed(2)),
+      };
+    }
   }
 
   // USD — return as-is

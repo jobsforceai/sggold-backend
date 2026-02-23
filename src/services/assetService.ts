@@ -95,9 +95,12 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
   const mode = env.DATA_PROVIDER_MODE;
 
   // SVBC (primary, polled every 5 min, reads from cache)
+  // SVBC local gold prices (INR) already include Indian duties — skip markup
   if (mode === "auto" || mode === "svbc") {
     try {
-      return await applyIndianMarkup(await getSvbcLiveQuote(metal, currency));
+      const quote = await getSvbcLiveQuote(metal, currency);
+      if (metal === "gold" && currency === "INR") return quote;
+      return await applyIndianMarkup(quote);
     } catch (error) {
       console.warn("[provider] svbc live failed:", (error as Error).message);
     }
