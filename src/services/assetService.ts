@@ -2,6 +2,7 @@ import { env } from "../config/env.js";
 import { getCache, setCache } from "../lib/cache.js";
 import { getAlphaHistoricalSeries, getAlphaLiveQuote } from "../providers/alphaVantageProvider.js";
 import { getGoldApiLiveQuote } from "../providers/goldApiProvider.js";
+import { getSvbcLiveQuote } from "../providers/svbcProvider.js";
 import { getYahooLiveQuote, getYahooHistoricalSeries } from "../providers/yahooFinanceProvider.js";
 import { getHistoricalSeries, getLiveQuote } from "../providers/mockProvider.js";
 import { getPriceConfig } from "./priceConfigService.js";
@@ -82,7 +83,7 @@ async function resolveAdminOverride(metal: Metal, currency: Currency): Promise<L
 }
 
 /**
- * Provider chain: Admin Override → Gold-API → Yahoo → Alpha Vantage → Mock
+ * Provider chain: Admin Override → SVBC → Gold-API → Yahoo → Alpha Vantage → Mock
  * Admin override bypasses the entire provider chain.
  * In "auto" mode, tries each provider in order.
  */
@@ -92,6 +93,15 @@ async function resolveLiveQuote(metal: Metal, currency: Currency): Promise<LiveQ
   if (adminQuote) return adminQuote;
 
   const mode = env.DATA_PROVIDER_MODE;
+
+  // SVBC (primary, polled every 5 min, reads from cache)
+  if (mode === "auto" || mode === "svbc") {
+    try {
+      return await applyIndianMarkup(await getSvbcLiveQuote(metal, currency));
+    } catch (error) {
+      console.warn("[provider] svbc live failed:", (error as Error).message);
+    }
+  }
 
   // Gold-API (free, unlimited real-time)
   if (mode === "auto" || mode === "gold_api") {

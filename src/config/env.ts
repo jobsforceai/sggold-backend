@@ -14,7 +14,7 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_USETLS: z.string().default("false"),
   FRONTEND_ORIGIN: z.string().default("http://localhost:3000"),
-  DATA_PROVIDER_MODE: z.enum(["mock", "alpha_vantage", "gold_api", "auto"]).default("auto"),
+  DATA_PROVIDER_MODE: z.enum(["mock", "alpha_vantage", "gold_api", "svbc", "auto"]).default("auto"),
   ALPHA_VANTAGE_API_KEY: z.string().optional(),
   GOLD_API_KEY: z.string().optional(),
   API_KEY: z.string().optional(),
@@ -26,7 +26,8 @@ const envSchema = z.object({
   ADMIN_API_KEY: z.string().optional(),
   ADMIN_ORIGIN: z.string().default("http://localhost:3001"),
   SAGENEX_API_URL: z.string().default("https://api.sagenex.com/api/v1"),
-  SAGENEX_API_KEY: z.string().optional()
+  SAGENEX_API_KEY: z.string().optional(),
+  SVBC_API_KEY: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);

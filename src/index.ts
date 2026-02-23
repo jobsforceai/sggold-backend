@@ -14,6 +14,7 @@ import tradeRoutes from "./routes/tradeRoutes.js";
 import schemeRoutes from "./routes/schemeRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import { startSvbcPoller } from "./providers/svbcProvider.js";
 
 const app = express();
 
@@ -46,6 +47,11 @@ app.use((error: unknown, _req: express.Request, res: express.Response, _next: ex
 
 async function bootstrap() {
   await connectMongo();
+
+  // Start SVBC background price poller (every 5 min)
+  if (env.SVBC_API_KEY) {
+    startSvbcPoller();
+  }
 
   app.listen(env.PORT, () => {
     console.log(`[server] running on http://localhost:${env.PORT}`);
