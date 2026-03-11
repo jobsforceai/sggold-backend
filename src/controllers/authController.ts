@@ -16,7 +16,7 @@ export async function registerHandler(req: Request, res: Response) {
     const data = registerSchema.parse(req.body);
     const result = await registerUser(data);
     res.cookie("sg_token", result.token, COOKIE_OPTIONS);
-    return res.status(201).json({ user: result.user });
+    return res.status(201).json({ user: result.user, token: result.token });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Registration failed";
     const status = message.includes("already registered") ? 409 : 400;
@@ -29,7 +29,7 @@ export async function loginHandler(req: Request, res: Response) {
     const data = loginSchema.parse(req.body);
     const result = await loginUser(data.phone, data.password);
     res.cookie("sg_token", result.token, COOKIE_OPTIONS);
-    return res.json({ user: result.user });
+    return res.json({ user: result.user, token: result.token });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Login failed";
     return res.status(401).json({ message });
